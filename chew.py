@@ -27,16 +27,23 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 import json
+import yaml
 
 
 class Chewer:
     """Cope with format and parsing."""
 
-    def __init__(self, excel_path='./data/tarifas.xlsx'):
+    def __init__(
+            self,
+            excel_path='./data/raw/tarifas.xlsx'
+    ):
         """From creepy data structure to fancy one."""
         self.excel_path = excel_path
 
-    def split_blocks(self, df: pd.DataFrame) -> dict[str, list[float]]:
+    def split_blocks(
+        self,
+        df: pd.DataFrame
+    ) -> dict[str, list[float]]:
         """Break block features down."""
         features = {}
         for (_, field) in df.iterrows():
@@ -49,7 +56,10 @@ class Chewer:
                 features[field.iloc[0]] = list(field.iloc[1:].values)
         return features
 
-    def split_tariffs(self, df: pd.DataFrame) -> dict[str, dict]:
+    def split_tariffs(
+        self,
+        df: pd.DataFrame
+    ) -> dict[str, dict]:
         """Classify tariffs blocks.
 
         blocks = {
@@ -82,7 +92,9 @@ class Chewer:
             tariffs[tariff_type] = block_dict
         return tariffs
 
-    def load_excel(self) -> tuple[dict, dict]:
+    def load_excel(
+            self
+    ) -> tuple[dict, dict]:
         """Load and process data."""
         global tariff_labels
         data = pd.read_excel(
@@ -154,7 +166,9 @@ class Chewer:
         with open(output_path, 'w', encoding='utf-8') as json_file:
             json.dump(data, json_file, indent=4, ensure_ascii=False)
 
-    def chew_data(self) -> pd.DataFrame:
+    def chew_data(
+            self
+    ) -> pd.DataFrame:
         """Turn nested into flat structure."""
         (nested_data, block_codes) = self.load_excel()
         flatten_data = {
@@ -204,10 +218,96 @@ class Chewer:
 class TariffsManager:
     """Hardcore data analysis."""
 
-    def __init__(self, excel_path: str = './data/03 - tariffs.xlsx'):
+    def __init__(
+            self,
+            excel_path: str = "./data/processed/03 - tariffs.xlsx",
+            tariff_groups_path: str = "data/processed/01 - groups.yaml"
+    ):
         """Friendly data structure."""
         self.df = pd.read_excel(excel_path)
         self.evolution: pd.DataFrame | None = None
+        self.utilities: list[str] | None = None
+        self.years: list[int] | None = None
+        self.blocks: list[str] | None = None
+        self.concepts: list[str] | None = None
+        self.tariff_groups: dict[
+            str, dict[str, list[dict[str, str]]]
+        ] | None = None
+        self.set_fields()
+        self.classify_tariffs(tariff_groups_path)
+
+    def set_fields(
+            self
+    ):
+        """Reach out columns unique values."""
+        self.utilities = self.df['Empresa'].unique().tolist()
+        self.years = self.df['Año'].unique().tolist()
+        self.blocks = self.df['Tarifa ID'].unique().tolist()
+        self.concepts = self.df['Concepto'].unique().tolist()
+        self.set_evolution()
+
+    def classify_tariffs(
+            self,
+            tariff_groups_path: str = "data/processed/01 - groups.yaml"
+    ):
+        """Group tariff code based on tariff_groups file.
+
+        1. Customer Type / End User Categories
+            - Residential:
+                - T-RE
+                - T-REH
+                - T-RH
+                - T-RP
+            - Commercial / Service:
+                - T-CO
+                - T-CS
+            - Industrial:
+                - T-IN
+            - General / Other Users:
+                - T-GE
+                - T-UD
+            - Promotional:
+                - T-6
+                - T-PR
+
+        2. Voltage Level / Connection Type
+            - Medium Voltage:
+                - T-MT
+                - T-MTB
+                - T-MTb
+                - T-MT69
+
+        3. Special Purpose or Service Type
+            - Sales / Distribution sales:
+                - T-CB
+                - T-CBA
+                - T-CBB
+                - T-SD
+            - Public Lighting:
+                - T-AP
+            - Electric Vehicle Charging:
+                - T-VE
+                - T-BE
+
+        4. Tariffs linked to Network/Cost Components
+            - Access and Network Charges:
+                - T-TA
+                - T-TPDx
+                - T-TCI
+            - Distributed Energy / Generation:
+                - T-TDER
+                - T-TCVE
+
+        """
+        try:
+            with open(tariff_groups_path, mode="r") as file:
+                groups = yaml.safe_load(file)
+        except FileNotFoundError:
+            print(f"FileNotFoundError: The file {tariff_groups_path} was not found.")
+        except yaml.YAMLError as e:
+            print(f"Error parsing YAML file: {e}")
+        else:
+            self.tariff_groups = groups
 
     def build_time_series(
             self,
@@ -252,87 +352,119 @@ class TariffsManager:
         ts_df = ts_df.sort_index()
         return ts_df
 
-    def plot_evolution(
-            self, ts_df: pd.DataFrame,
-            variables_labels: list[str]
-    ) -> plt.Axes:
-        """Visualize variables over time."""
-        for concept in variables_labels:
-            ax = ts_df[concept].plot(legend=True, figsize=(12.0, 6.0))
-            ax.legend(loc='best')
-        plt.show()
-
-    def draw_evolution(
+    def set_evolution(
             self,
-            companies: list[str] = ['ICE', 'CNFL'],
-            tariff_id: str = 'T-MT',
-            start_year: int = 2013,
-            end_year: int = 2025,
-            variable_labels=['ICE - a.Periodo Punta (máxima)',
-                             'ICE - c.Periodo Valle (máxima)',
-                             'CNFL - a. Energía Punta (Máxima)',
-                             'CNFL - c. Energía Valle (Máxima)']
     ) -> pd.DataFrame:
-        """Evolution of tariffs history over time.
+        """Evolution of tariffs history over time between utilities.
 
         Check for new or removed *Concept* during certain year
-        as all variables must have same size.
+        as all variables must be same size.
 
         .. Note::
             Parameter ``end_year`` it is inclusive.
 
         """
         df = self.df
-        years_df = {y: [] for y in range(start_year, end_year + 1)}
+        years_df = {y: [] for y in self.years}
         for year in years_df.keys():
-            for company in companies:
-                condition = ((df['Empresa'] == company)
-                             & (df['Año'] == year)
-                             & (df['Tarifa ID'] == tariff_id))
-                data = df[condition].loc[:, 'Concepto':]
-                data['Concepto'] = data['Concepto'].apply(
-                    lambda x: f'{company} - {x}'
-                )
-                years_df[year].append(data)
+            for company in self.utilities:
+                for tariff_id in self.blocks:
+                    condition = ((df['Empresa'] == company)
+                                 & (df['Año'] == year)
+                                 & (df['Tarifa ID'] == tariff_id))
+                    data = df[condition].loc[:, 'Concepto':]
+                    data['Concepto'] = data['Concepto'].apply(
+                        lambda x: f'({company})({tariff_id}): {x}'
+                    )
+                    years_df[year].append(data)
 
-        ts_df = self.build_time_series(years_df)
-        self.plot_evolution(ts_df, variable_labels)
-        return ts_df
+        self.evolution = self.build_time_series(years_df)
+
+    def draw_evolution(
+            self,
+            variable_labels: list[str] = [
+                '(ICE)(T-MT): a.Periodo Punta (máxima)',
+                '(ICE)(T-MT): c.Periodo Valle (máxima)',
+                '(CNFL)(T-MT): a. Energía Punta (Máxima)',
+                '(CNFL)(T-MT): c. Energía Valle (Máxima)'
+            ]
+    ) -> plt.Axes:
+        """Visualize variables over time."""
+        ts_df = self.evolution
+        for concept in variable_labels:
+            ax = ts_df[concept].plot(legend=True, figsize=(12.0, 6.0))
+            ax.legend(loc='best')
+        plt.show()
 
     def describe_data(
-            self
+            self,
+            companies: list[str] = ["ICE", "CNFL"],
+            **kwargs
     ) -> pd.DataFrame:
-        """Report data statistical metrics."""
-        pass
+        """Fetch tariff code and report data statistical metrics.
 
+        Parameters
+        ----------
+        companies : list[str]
+            Utilities labels.
+
+        kwargs : dict[str, str]
+            The *key* refers to the general category of
+            group of tariffs in ``groups.yaml`` file while the
+            *value* to the subgroup or sector within::
+
+                CustomerType_EndUserCategories[Industrial]
+
+        """
+        filter_data: list[str] = []
+
+        for utility in companies:
+            for group, sector in kwargs.items():
+                blocks = self.tariff_groups[group][sector]
+                codes = [list(entry.keys())[0] for entry in blocks]
+                filter_data.append(f"({utility})({codes})")
+                pass
+            pass
 
 if __name__ == '__main__':
     aresep = TariffsManager()
-    peak_labels = ['ICE - Energía_Punta',
-                   'CNFL - Energía_Punta',
-                   'ICE - Energía Punta',
-                   'CNFL - Energía Punta',
-                   'ICE - a. Energía Punta',
-                   'CNFL - a. Energía Punta',
-                   'ICE - a.Periodo Punta (máxima)',
-                   'CNFL - a. Energía Punta (Máxima)']
-    valley_labels = ['ICE - Energía_Valle',
-                     'CNFL - Energía_Valle',
-                     'ICE - Energía Valle',
-                     'CNFL - Energía Valle',
-                     'ICE - b. Energía Valle',
-                     'CNFL - b. Energía Valle',
-                     'ICE - c.Periodo Valle (máxima)',
-                     'CNFL - c. Energía Valle (Máxima)']
+    peak_labels = [
+        '(ICE)(T-MT): Energía_Punta',
+        '(ICE)(T-MT): Energía Punta',
+        '(ICE)(T-MT): a. Energía Punta',
+        '(ICE)(T-MT): a.Periodo Punta (máxima)',
+        '(CNFL)(T-MT): Energía_Punta',
+        '(CNFL)(T-MT): Energía Punta',
+        '(CNFL)(T-MT): a. Energía Punta',
+        '(CNFL)(T-MT): a. Energía Punta (Máxima)'
+    ]
+    valley_labels = [
+        '(ICE)(T-MT): Energía_Valle',
+        '(ICE)(T-MT): Energía Valle',
+        '(ICE)(T-MT): b. Energía Valle',
+        '(ICE)(T-MT): c.Periodo Valle (máxima)',
+        '(CNFL)(T-MT): Energía_Valle',
+        '(CNFL)(T-MT): Energía Valle',
+        '(CNFL)(T-MT): b. Energía Valle',
+        '(CNFL)(T-MT): c. Energía Valle (Máxima)'
+    ]
+    night_labels = [
+        '(ICE)(T-MT): Energía_Noche',
+        '(ICE)(T-MT): Energía Noche',
+        '(ICE)(T-MT): c. Energía Noche',
+        '(ICE)(T-MT): e.Periodo Noche (máxima)',
+        '(CNFL)(T-MT): Energía_Noche',
+        '(CNFL)(T-MT): Energía Noche',
+        '(CNFL)(T-MT): c. Energía Noche',
+        '(CNFL)(T-MT): e. Energía Noche (Máxima)'
+    ]
 
-    data_ts = aresep.draw_evolution(
-        companies=['ICE', 'CNFL'],
-        tariff_id='T-MT',
-        start_year=2013,
-        end_year=2025,
-        variable_labels=peak_labels
+    aresep.draw_evolution(
+        peak_labels
     )
-    aresep.plot_evolution(
-        ts_df=data_ts,
-        variables_labels=valley_labels
+    aresep.draw_evolution(
+        valley_labels
+    )
+    aresep.draw_evolution(
+        night_labels
     )

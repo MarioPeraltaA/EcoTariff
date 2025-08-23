@@ -1,0 +1,49 @@
+CustomerType_EndUserCategories:
+  Residential:
+    - T-RE: "residencial"
+    - T-REH: "residencial horaria"
+    - T-RH: "residencial horaria"
+    - T-RP: "tarifa residencial modalidad prepago"
+  Commercial_Service:
+    - T-CO: "comercios y servicios"
+    - T-CS: "preferencial"
+  Industrial:
+    - T-IN: "industrial"
+  General_OtherUsers:
+    - T-GE: "general"
+    - T-UD: "usuarios directos"
+  Promotional:
+    - T-6: "promocional"
+    - T-PR: "promocional"
+
+VoltageLevel_ConnectionType:
+  MediumVoltage:
+    - T-MT: "media tensión (t-mt)"
+    - T-MTB: "media tensión (t-mtb)"
+    - T-MTb: "media tensión (t-mtb)"
+    - T-MT69: "tarifa media tensión interconectados a barra de 69 kv (t-mt69)"
+
+SpecialPurpose_ServiceType:
+  Sales_DistributionSales:
+    - T-CB: "ventas a ice distribución y a la cnfl"
+    - T-CBA: "ventas a ice distribución"
+    - T-CBB: "ventas a la cnfl"
+    - T-SD: "ventas al servicio de distribución"
+  PublicLighting:
+    - T-AP: "alumbrado público"
+  ElectricVehicleCharging:
+    - T-VE: "tarifa en centros de recarga rápida"
+    - T-BE: "tarifa en centros de recarga en planteles para autobuses electricos"
+
+Network_CostComponents:
+  AccessNetworkCharges:
+    - T-TA: "tarifa de acceso"
+    - T-TPDx: "tarifa de peajes de distribución"
+    - T-TCI: |
+        tarifa para los costos de interconeción 
+        excedentes de energía (colones/kwh)
+  DistributedEnergy_Generation:
+    - T-TDER: "tarifa de los recursos energéticos distribuidos"
+    - T-TCVE: |
+        tarifa máxima para la compra-venta de
+        excedentes de energía
