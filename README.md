@@ -1,6 +1,6 @@
 # EcoTariff
 
-**Repository for cleaning, structuring, and analyzing historical electricity tariffs. Focused on block tariffs (residential, commercial, industrial) with monthly resolution and multi-utility coverage.**
+**Repository for cleaning, structuring, and analyzing historical electricity tariffs. Focused on tariffs (residential, commercial, industrial) with monthly resolution and multi-utility coverage.**
 
 ---
 

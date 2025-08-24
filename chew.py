@@ -1,24 +1,7 @@
 """Read and process electrical tariffs of national utilities.
 
-Load historical tariffs data since year 2013 and
-sort out its content in a more compact and simple
-format such as .json so it can be handled by any LLM easily
-with entries like::
-
-    utilities = {
-        "CompanyName": {
-            "Year": {
-                "TariffType": {
-                    "Energy": [],
-                    "Power": [],
-                    "Others": []
-                }
-            }
-        }
-    }
-
-Where the lists data are float such lists have length
-of twelve due to each month of the year.
+Repository for cleaning, structuring, and analyzing historical electricity
+tariffs with monthly resolution and multi-utility coverage of each block.
 
 """
 
@@ -35,16 +18,16 @@ class Chewer:
 
     def __init__(
             self,
-            excel_path='./data/raw/tarifas.xlsx'
+            excel_path='./data/raw/01 - tarifas.xlsx'
     ):
         """From creepy data structure to fancy one."""
         self.excel_path = excel_path
 
-    def split_blocks(
+    def split_services(
         self,
         df: pd.DataFrame
     ) -> dict[str, list[float]]:
-        """Break block features down."""
+        """Break service features down."""
         features = {}
         for (_, field) in df.iterrows():
             field = field.replace(int(0), np.nan)
@@ -60,9 +43,9 @@ class Chewer:
         self,
         df: pd.DataFrame
     ) -> dict[str, dict]:
-        """Classify tariffs blocks.
+        """Classify tariffs services.
 
-        blocks = {
+        services = {
             "TariffType": {
                 "Energy": [],
                 "Power": [],
@@ -87,9 +70,9 @@ class Chewer:
             tariff_labels.append(
                 (df.iloc[(start, 0)], df.iloc[(start - 1, 0)])
             )
-            block_df = df.iloc[start + 1:end - 1]
-            block_dict = self.split_blocks(block_df)
-            tariffs[tariff_type] = block_dict
+            service_df = df.iloc[start + 1:end - 1]
+            service_dict = self.split_services(service_df)
+            tariffs[tariff_type] = service_dict
         return tariffs
 
     def load_excel(
@@ -124,8 +107,8 @@ class Chewer:
             for year in years:
                 sheet = f'{company} {year}'
                 df = data[sheet]
-                blocks = self.split_tariffs(df)
-                years_dict[year] = blocks
+                services = self.split_tariffs(df)
+                years_dict[year] = services
             utilities_dict[company] = years_dict
         labels_dict = self.check_tariff_labels(tariff_labels)
         return (utilities_dict, labels_dict)
@@ -134,7 +117,7 @@ class Chewer:
             self,
             labels: list[tuple[str, str]]
     ) -> dict[str, list]:
-        """Verify one code per block description."""
+        """Verify one code per service description."""
         labels_dict = {}
         for (code, meaning) in labels:
             if code in labels_dict:
@@ -159,10 +142,10 @@ class Chewer:
 
     def convert_xlsx_to_json(
             self,
-            output_path: str = './data/tariffs.json'
+            output_path: str = './data/processed/02 - tariffs.json'
     ):
         """Write out a json file."""
-        (data, _) = self.load_excel(self.excel_path)
+        (data, _) = self.load_excel()
         with open(output_path, 'w', encoding='utf-8') as json_file:
             json.dump(data, json_file, indent=4, ensure_ascii=False)
 
@@ -170,13 +153,13 @@ class Chewer:
             self
     ) -> pd.DataFrame:
         """Turn nested into flat structure."""
-        (nested_data, block_codes) = self.load_excel()
+        (nested_data, service_codes) = self.load_excel()
         flatten_data = {
             'Empresa': [],
             'Año': [],
             'Tarifa ID': [],
-            'Nombre bloque': [],
-            'Concepto': [],
+            'Servicio': [],
+            'Bloque': [],
             'Enero': [],
             'Febrero': [],
             'Marzo': [],
@@ -204,10 +187,10 @@ class Chewer:
                         flatten_data['Empresa'].append(company)
                         flatten_data['Año'].append(year)
                         flatten_data['Tarifa ID'].append(code)
-                        flatten_data['Nombre bloque'].append(
-                            block_codes[code][0]
+                        flatten_data['Servicio'].append(
+                            service_codes[code][0]
                         )
-                        flatten_data['Concepto'].append(field)
+                        flatten_data['Bloque'].append(field)
                         for (i, val) in enumerate(vals):
                             month = i_to_month[i]
                             flatten_data[month].append(val)
@@ -228,8 +211,8 @@ class TariffsManager:
         self.evolution: pd.DataFrame | None = None
         self.utilities: list[str] | None = None
         self.years: list[int] | None = None
+        self.services: list[str] | None = None
         self.blocks: list[str] | None = None
-        self.concepts: list[str] | None = None
         self.tariff_groups: dict[
             str, dict[str, list[dict[str, str]]]
         ] | None = None
@@ -242,8 +225,8 @@ class TariffsManager:
         """Reach out columns unique values."""
         self.utilities = self.df['Empresa'].unique().tolist()
         self.years = self.df['Año'].unique().tolist()
-        self.blocks = self.df['Tarifa ID'].unique().tolist()
-        self.concepts = self.df['Concepto'].unique().tolist()
+        self.services = self.df['Tarifa ID'].unique().tolist()
+        self.blocks = self.df['Bloque'].unique().tolist()
         self.set_evolution()
 
     def classify_tariffs(
@@ -303,7 +286,9 @@ class TariffsManager:
             with open(tariff_groups_path, mode="r") as file:
                 groups = yaml.safe_load(file)
         except FileNotFoundError:
-            print(f"FileNotFoundError: The file {tariff_groups_path} was not found.")
+            logg = ("FileNotFoundError: The file "
+                    f"{tariff_groups_path} was not found.")
+            print(logg)
         except yaml.YAMLError as e:
             print(f"Error parsing YAML file: {e}")
         else:
@@ -319,7 +304,7 @@ class TariffsManager:
         for (year, dfs_year) in all_years.items():
             for df_year in dfs_year:
                 df_long = df_year.melt(
-                    id_vars='Concepto',
+                    id_vars='Bloque',
                     var_name='Mes',
                     value_name='Valor'
                 )
@@ -343,11 +328,11 @@ class TariffsManager:
                     'month': df_long['Mes'],
                     'day': 1
                 })
-                dfs.append(df_long[['Fecha', 'Concepto', 'Valor']])
+                dfs.append(df_long[['Fecha', 'Bloque', 'Valor']])
 
         data_all = pd.concat(dfs, ignore_index=True)
         ts_df = data_all.pivot(
-            index='Fecha', columns='Concepto', values='Valor'
+            index='Fecha', columns='Bloque', values='Valor'
         )
         ts_df = ts_df.sort_index()
         return ts_df
@@ -357,7 +342,7 @@ class TariffsManager:
     ) -> pd.DataFrame:
         """Evolution of tariffs history over time between utilities.
 
-        Check for new or removed *Concept* during certain year
+        Check for new or removed *Block* during certain year
         as all variables must be same size.
 
         .. Note::
@@ -368,12 +353,12 @@ class TariffsManager:
         years_df = {y: [] for y in self.years}
         for year in years_df.keys():
             for company in self.utilities:
-                for tariff_id in self.blocks:
+                for tariff_id in self.services:
                     condition = ((df['Empresa'] == company)
                                  & (df['Año'] == year)
                                  & (df['Tarifa ID'] == tariff_id))
-                    data = df[condition].loc[:, 'Concepto':]
-                    data['Concepto'] = data['Concepto'].apply(
+                    data = df[condition].loc[:, 'Bloque':]
+                    data['Bloque'] = data['Bloque'].apply(
                         lambda x: f'({company})({tariff_id}): {x}'
                     )
                     years_df[year].append(data)
@@ -391,8 +376,8 @@ class TariffsManager:
     ) -> plt.Axes:
         """Visualize variables over time."""
         ts_df = self.evolution
-        for concept in variable_labels:
-            ax = ts_df[concept].plot(legend=True, figsize=(12.0, 6.0))
+        for block in variable_labels:
+            ax = ts_df[block].plot(legend=True, figsize=(12.0, 6.0))
             ax.legend(loc='best')
         plt.show()
 
@@ -420,11 +405,12 @@ class TariffsManager:
 
         for utility in companies:
             for group, sector in kwargs.items():
-                blocks = self.tariff_groups[group][sector]
-                codes = [list(entry.keys())[0] for entry in blocks]
+                services = self.tariff_groups[group][sector]
+                codes = [list(entry.keys())[0] for entry in services]
                 filter_data.append(f"({utility})({codes})")
                 pass
             pass
+
 
 if __name__ == '__main__':
     aresep = TariffsManager()
