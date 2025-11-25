@@ -3,6 +3,14 @@
 Repository for cleaning, structuring, and analyzing historical electricity
 tariffs with monthly resolution and multi-utility coverage of each block.
 
+Author::
+
+    Mario R. Peralta A.
+
+For feedback::
+
+    mario.peralta@ieee.org
+
 """
 
 
@@ -194,7 +202,9 @@ class Chewer:
                         for (i, val) in enumerate(vals):
                             month = i_to_month[i]
                             flatten_data[month].append(val)
+        # Homogenize
         df = pd.DataFrame(data=flatten_data)
+        df['Tarifa ID'] = df['Tarifa ID'].apply(lambda x: x.strip().upper())
         return df
 
 
@@ -204,7 +214,7 @@ class TariffsManager:
     def __init__(
             self,
             excel_path: str = "./data/processed/03 - tariffs.xlsx",
-            tariff_groups_path: str = "data/processed/01 - groups.yaml"
+            service_groups_path: str = "data/processed/01 - groups.yaml"
     ):
         """Friendly data structure."""
         self.df = pd.read_excel(excel_path)
@@ -212,12 +222,13 @@ class TariffsManager:
         self.utilities: list[str] | None = None
         self.years: list[int] | None = None
         self.services: list[str] | None = None
-        self.blocks: list[str] | None = None
+        self.blocks: dict[str, list[str]] | None = None
         self.tariff_groups: dict[
             str, dict[str, list[dict[str, str]]]
         ] | None = None
         self.set_fields()
-        self.classify_tariffs(tariff_groups_path)
+        self.classify_services(service_groups_path)
+        self.set_blocks()
 
     def set_fields(
             self
@@ -226,14 +237,13 @@ class TariffsManager:
         self.utilities = self.df['Empresa'].unique().tolist()
         self.years = self.df['Año'].unique().tolist()
         self.services = self.df['Tarifa ID'].unique().tolist()
-        self.blocks = self.df['Bloque'].unique().tolist()
         self.set_evolution()
 
-    def classify_tariffs(
+    def classify_services(
             self,
-            tariff_groups_path: str = "data/processed/01 - groups.yaml"
+            service_groups_path: str = "data/processed/01 - groups.yaml"
     ):
-        """Group tariff code based on tariff_groups file.
+        """Group services code based on ``groups.yaml`` file.
 
         1. Customer Type / End User Categories
             - Residential:
@@ -283,16 +293,74 @@ class TariffsManager:
 
         """
         try:
-            with open(tariff_groups_path, mode="r") as file:
+            with open(service_groups_path, mode="r") as file:
                 groups = yaml.safe_load(file)
         except FileNotFoundError:
             logg = ("FileNotFoundError: The file "
-                    f"{tariff_groups_path} was not found.")
+                    f"{service_groups_path} was not found.")
             print(logg)
         except yaml.YAMLError as e:
             print(f"Error parsing YAML file: {e}")
         else:
             self.tariff_groups = groups
+
+    def set_blocks(
+            self
+    ) -> dict[str, list[str]]:
+        """Store historical blocks unique labels.
+
+        Retain record of block's labels given the service
+        all across the years, all across the companies.
+
+        Filter blocks (features) associated to certain
+        service or type of tariff.
+
+        Returns
+        -------
+        blocks : dict[str, list[str]]
+            Format ``(<utility>)(<service_id>): [<features>]``
+
+        """
+        df = self.df
+        blocks: dict[str, list[str]] = {}
+
+        for company in self.utilities:
+            for service_id in self.services:
+                condition = ((df['Empresa'] == company)
+                             & (df['Tarifa ID'] == service_id))
+                block_labels = df[condition]['Bloque'].unique().tolist()
+                if block_labels:
+                    blocks[f"({company})({service_id})"] = block_labels
+        self.blocks = blocks
+
+    def group_services(
+            self
+    ) -> dict[str, list[str]]:
+        """Group services by blocks.
+
+        All possible blocks throughout the years
+        and across companies but under same service
+        or type of tariff.
+
+        .. note::
+
+            This can be helpful when it comes to set
+            the ``config`` file.
+
+        """
+        df = self.df
+        type_service: dict[str, list[str]] = {}
+
+        for service_id in self.services:
+            service_fts = (
+                df[df['Tarifa ID'] == service_id]['Bloque'].apply(
+                    lambda x: x.strip().lower()
+                )
+            )
+            service_fts = service_fts.unique().tolist()
+            if service_fts:
+                type_service[service_id] = service_fts
+        return type_service
 
     def build_time_series(
             self,

@@ -1,12 +1,13 @@
 # EcoTariff
 
-**Repository for cleaning, structuring, and analyzing historical electricity tariffs. Focused on tariffs (residential, commercial, industrial) with monthly resolution and multi-utility coverage.**
+**Repository for cleaning, structuring, and analyzing historical electricity tariffs. Focused on distribution tariffs with monthly resolution and multi-utility coverage.**
 
 ---
 
 ## Overview
 
-EcoTariff is a repository for collecting, cleaning, and analyzing historical electricity tariff data from different Costa Rican distribution utilities. The project covers tariffs from **2013 to present**, with monthly resolution and detailed breakdowns by tariff type, consumption blocks, and components (energy, power, others).
+EcoTariff is a repository for collecting, cleaning, and analyzing historical electricity tariff data from different Costa Rican distribution utilities. The project covers tariffs from **2013 to present**, with monthly resolution and detailed breakdowns by tariff type, consumption blocks, and components (energy, power, others). Data source [Tarifas vigentes de electricidad](https://aresep.go.cr/electricidad/tarifas/).
+
 
 The goal is to provide:
 

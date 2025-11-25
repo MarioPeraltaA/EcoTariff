@@ -20,7 +20,6 @@ VoltageLevel_ConnectionType:
   MediumVoltage:
     - T-MT: "media tensión (t-mt)"
     - T-MTB: "media tensión (t-mtb)"
-    - T-MTb: "media tensión (t-mtb)"
     - T-MT69: "tarifa media tensión interconectados a barra de 69 kv (t-mt69)"
 
 SpecialPurpose_ServiceType:
